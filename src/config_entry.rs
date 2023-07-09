@@ -7,7 +7,6 @@ use anyhow::Result;
 use skim::ItemPreview;
 use skim::SkimItem;
 
-use crate::config::Config;
 use crate::config::Entry;
 use crate::config::Workdir;
 use crate::tmux::SessionStats;
@@ -17,37 +16,7 @@ use crate::utils::is_dir;
 pub struct PromptItem {
     pub name: String,
     pub workdir: Workdir,
-    pub attached: Option<bool>,
-    pub window_count: Option<u32>,
-}
-
-impl SkimItem for PromptItem {
-    fn text(&self) -> Cow<str> {
-        Cow::Owned(format!(
-            "{:<3} {:<40} {:<60} {}",
-            self.attached.map_or("", |v| if v { "(*)" } else { "" }),
-            self.name,
-            self.workdir.as_ref(),
-            self.window_count.map_or("".to_owned(), |v| format!("{v} window(s)"))
-        ))
-    }
-
-    fn output(&self) -> Cow<str> {
-        Cow::Owned(format!("{} {}", self.name, self.workdir.as_ref()))
-    }
-
-    fn preview(&self, context: skim::PreviewContext) -> skim::ItemPreview {
-        if !context.cmd_query.is_empty() {
-            ItemPreview::Command(
-                context
-                    .cmd_query
-                    .replace("{{workdir}}", self.workdir.as_ref())
-                    .replace("{{name}}", &self.name),
-            )
-        } else {
-            ItemPreview::Text("".to_owned())
-        }
-    }
+    pub stats: Option<SessionStats>,
 }
 
 impl PromptItem {
@@ -55,8 +24,7 @@ impl PromptItem {
         return PromptItem {
             name,
             workdir,
-            window_count: None,
-            attached: None,
+            stats: None,
         };
     }
 
@@ -107,17 +75,53 @@ impl PromptItem {
 
     pub fn populate_session_data(&mut self, active_sessions: &HashMap<String, SessionStats>) {
         if let Some(s) = active_sessions.get(&self.name) {
-            self.attached = Some(s.attached);
-            self.window_count = Some(s.window_count);
+            self.stats = Some(s.to_owned());
         }
     }
 
-    pub fn from_active_session(config: &Config, name: String, stats: &SessionStats) -> Self {
+    pub fn from_active_session(workdir: Workdir, name: String, stats: &SessionStats) -> Self {
         Self {
-            workdir: config.default_dir.to_owned(),
+            workdir,
             name,
-            attached: Some(stats.attached),
-            window_count: Some(stats.window_count),
+            stats: Some(stats.to_owned()),
+        }
+    }
+}
+
+impl SkimItem for PromptItem {
+    fn text(&self) -> Cow<str> {
+        match self.stats {
+            Some(ref stats) => Cow::Owned(format!(
+                "{:<3} {:<40} {:<60} {}",
+                if stats.attached { "(*)" } else { "" },
+                self.name,
+                self.workdir.as_ref(),
+                format_args!("{} window(s)", stats.window_count)
+            )),
+            None => Cow::Owned(format!(
+                "{:<3} {:<40} {:<60} {}",
+                "",
+                self.name,
+                self.workdir.as_ref(),
+                ""
+            )),
+        }
+    }
+
+    fn output(&self) -> Cow<str> {
+        Cow::Owned(format!("{} {}", self.name, self.workdir.as_ref()))
+    }
+
+    fn preview(&self, context: skim::PreviewContext) -> skim::ItemPreview {
+        if !context.cmd_query.is_empty() {
+            ItemPreview::Command(
+                context
+                    .cmd_query
+                    .replace("{{workdir}}", self.workdir.as_ref())
+                    .replace("{{name}}", &self.name),
+            )
+        } else {
+            ItemPreview::Text("".to_owned())
         }
     }
 }

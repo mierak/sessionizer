@@ -13,7 +13,7 @@ use file_config::FileEntry;
 pub use args::Command;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Workdir(String);
+pub struct Workdir(std::sync::Arc<str>);
 
 #[derive(Debug)]
 pub enum Entry {
@@ -29,8 +29,8 @@ impl TryFrom<String> for Workdir {
     }
 }
 
-impl AsRef<String> for Workdir {
-    fn as_ref(&self) -> &String {
+impl AsRef<str> for Workdir {
+    fn as_ref(&self) -> &str {
         &self.0
     }
 }

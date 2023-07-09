@@ -1,20 +1,22 @@
-use std::env;
+use std::{env, sync::Arc};
 
 use anyhow::{Context, Result};
 
-pub fn envsubst(input: &str) -> Result<String> {
-    Ok(input
-        .split('/')
-        .map(|word| {
-            if let Some(s) = word.strip_prefix('$') {
-                return env::var(s).context(format!("Failed to substitute env variable '{s}'"));
-            } else if word == "~" {
-                return env::var("HOME").context("Failed to substitute HOME for tilde");
-            };
-            return Ok(word.to_string());
-        })
-        .collect::<Result<Vec<String>>>()?
-        .join("/"))
+pub fn envsubst(input: &str) -> Result<Arc<str>> {
+    Ok(Arc::from(
+        input
+            .split('/')
+            .map(|word| {
+                if let Some(s) = word.strip_prefix('$') {
+                    return env::var(s).context(format!("Failed to substitute env variable '{s}'"));
+                } else if word == "~" {
+                    return env::var("HOME").context("Failed to substitute HOME for tilde");
+                };
+                return Ok(word.to_string());
+            })
+            .collect::<Result<Vec<String>>>()?
+            .join("/"),
+    ))
 }
 
 pub fn is_dir(entry: &Result<std::fs::DirEntry, std::io::Error>) -> bool {

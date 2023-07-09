@@ -86,7 +86,8 @@ impl<E: Execute> Tmux<E> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionStats {
-    pub window_count: u32,
+    pub window_count: u8,
     pub attached: bool,
 }

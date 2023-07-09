@@ -22,7 +22,7 @@ use tmux::Tmux;
 
 pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
     match config.command {
-        Some(Command::List) => run_selection(prompt_items, tmux, config),
+        Some(Command::List) | None => run_selection(prompt_items, tmux, config),
         Some(Command::Config) => {
             println!(
                 "{}",
@@ -30,22 +30,19 @@ pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &C
             );
             Ok(())
         }
-        Some(Command::Switch { session_name: ref name }) => handle_selected_item(
-            &PromptItem::new(name.to_owned(), config.default_dir.to_owned()),
-            tmux,
-            config,
-        ),
-        None => run_selection(prompt_items, tmux, config),
+        Some(Command::Switch { session_name: ref name }) => {
+            let item = &PromptItem::new(name.to_owned(), config.default_dir.to_owned());
+            handle_selected_item(item, tmux, config)
+        }
     }
 }
 
 fn run_selection<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
     match prompt::show(prompt_items, config) {
-        Ok(Some(selected_item)) => handle_selected_item(&selected_item, tmux, config)?,
-        Ok(None) => {} // noop, cancelled
+        Ok(Some(selected_item)) => handle_selected_item(&selected_item, tmux, config),
+        Ok(None) => Ok(()), // do nothing, cancelled
         Err(err) => return Err(err),
-    };
-    Ok(())
+    }
 }
 
 fn handle_selected_item<E: Execute>(item: &PromptItem, tmux: &Tmux<E>, config: &Config) -> Result<()> {
@@ -91,7 +88,7 @@ pub fn create_prompt_items(
     if !active_sessions.is_empty() {
         res = active_sessions
             .iter()
-            .map(|(k, v)| PromptItem::from_active_session(config, k.to_owned(), v))
+            .map(|(k, v)| PromptItem::from_active_session(config.default_dir.to_owned(), k.to_owned(), v))
             .chain(res)
             .collect();
     }
@@ -100,13 +97,13 @@ pub fn create_prompt_items(
         #[rustfmt::skip]
         res.sort_by(|a, b| {
             match (a, b) {
-                (PromptItem { attached: Some(true), .. }, _) => Ordering::Less,
-                (_, PromptItem { attached: Some(true), .. }) => Ordering::Greater,
-                (PromptItem { window_count: Some(_), .. }, PromptItem { window_count: None, .. }) => Ordering::Less,
-                (PromptItem { window_count: None, .. }, PromptItem { window_count: Some(_), .. }) => Ordering::Greater,
-                (PromptItem { window_count: Some(c1), .. }, PromptItem { window_count: Some(c2), .. }) if (c1 == c2) => Ordering::Equal,
-                (PromptItem { window_count: Some(c1), .. }, PromptItem { window_count: Some(c2), .. }) if (c1 > c2) => Ordering::Less,
-                (PromptItem { window_count: Some(_), .. }, PromptItem { window_count: Some(_), .. }) => Ordering::Greater,
+                (PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }, _) => Ordering::Less,
+                (_, PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }) => Ordering::Greater,
+                (PromptItem { stats: Some(_), .. }, PromptItem { stats: None, .. }) => Ordering::Less,
+                (PromptItem { stats: None, .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
+                (PromptItem { stats: Some(SessionStats {window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats {window_count: c2, .. }), .. }) if (c1 == c2) => Ordering::Equal,
+                (PromptItem { stats: Some(SessionStats {window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats {window_count: c2, .. }), .. }) if (c1 > c2) => Ordering::Less,
+                (PromptItem { stats: Some(_), .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
                 (PromptItem { name: name1, .. }, PromptItem { name: name2, .. }) => name1.to_lowercase().cmp(&name2.to_lowercase()),
 
             }
