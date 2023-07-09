@@ -6,7 +6,7 @@ use skim::{
     Skim, SkimItemReceiver, SkimItemSender, SkimOptions,
 };
 
-use crate::{config::Config, config_entry::PromptItem};
+use crate::{config::Config, prompt_item::PromptItem};
 
 #[rustfmt::skip]
 static HEADER: &str = concat!(
@@ -63,16 +63,16 @@ fn gen_header(hide_banner: &bool) -> Result<String> {
     return Ok(header);
 }
 
-pub fn prompt_for_session(rx_item: SkimItemReceiver, opts: SkimOptions) -> Result<Option<PromptItem>> {
+fn prompt_for_session(rx_item: SkimItemReceiver, opts: SkimOptions) -> Result<Option<PromptItem>> {
     let selected_items = Skim::run_with(&opts, Some(rx_item))
         .filter(|out| !out.is_abort)
         .map(|out| out.selected_items)
         .unwrap_or_else(Vec::new);
 
     let selected_items = selected_items
-        .iter()
+        .into_iter()
         .map(|selected_item| -> Result<PromptItem> {
-            let item = (**selected_item)
+            let item = (*selected_item)
                 .as_any()
                 .downcast_ref::<PromptItem>()
                 .context("Unable to downcast selected item to ConfigEntry")?;

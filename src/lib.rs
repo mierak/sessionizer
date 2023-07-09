@@ -1,23 +1,19 @@
 #![allow(clippy::needless_return)]
 #![deny(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 pub mod config;
-pub mod config_entry;
 pub mod prompt;
+pub mod prompt_item;
 pub mod tmux;
 pub mod utils;
 
 extern crate skim;
-use std::cmp::Ordering;
-use std::collections::HashMap;
 
 use anyhow::Context;
 use anyhow::Result;
 use config::Command;
 use config::Config;
-use config::Entry;
-use config_entry::PromptItem;
+use prompt_item::PromptItem;
 use tmux::Execute;
-use tmux::SessionStats;
 use tmux::Tmux;
 
 pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
@@ -73,42 +69,4 @@ fn handle_selected_item<E: Execute>(item: &PromptItem, tmux: &Tmux<E>, config: &
         tmux.switch_client(&item.name)?.print();
     }
     return Ok(());
-}
-
-pub fn create_prompt_items(
-    config: &Config,
-    entries: Vec<Entry>,
-    active_sessions: &mut HashMap<String, SessionStats>,
-) -> Result<Vec<PromptItem>> {
-    let mut res = entries.into_iter().try_fold(Vec::new(), |mut acc, e| {
-        PromptItem::from_entry(e, active_sessions, &mut acc)?;
-        Ok::<Vec<PromptItem>, anyhow::Error>(acc)
-    })?;
-
-    if !active_sessions.is_empty() {
-        res = active_sessions
-            .iter()
-            .map(|(k, v)| PromptItem::from_active_session(config.default_dir.to_owned(), k.to_owned(), v))
-            .chain(res)
-            .collect();
-    }
-
-    if config.sort {
-        #[rustfmt::skip]
-        res.sort_by(|a, b| {
-            match (a, b) {
-                (PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }, _) => Ordering::Less,
-                (_, PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }) => Ordering::Greater,
-                (PromptItem { stats: Some(_), .. }, PromptItem { stats: None, .. }) => Ordering::Less,
-                (PromptItem { stats: None, .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
-                (PromptItem { stats: Some(SessionStats {window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats {window_count: c2, .. }), .. }) if (c1 == c2) => Ordering::Equal,
-                (PromptItem { stats: Some(SessionStats {window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats {window_count: c2, .. }), .. }) if (c1 > c2) => Ordering::Less,
-                (PromptItem { stats: Some(_), .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
-                (PromptItem { name: name1, .. }, PromptItem { name: name2, .. }) => name1.to_lowercase().cmp(&name2.to_lowercase()),
-
-            }
-        });
-    }
-
-    return Ok(res);
 }

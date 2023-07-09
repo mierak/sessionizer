@@ -17,8 +17,19 @@ pub struct Workdir(std::sync::Arc<str>);
 
 #[derive(Debug)]
 pub enum Entry {
-    Dir { name: String, workdir: Workdir },
-    Plain { name: String, workdir: Workdir },
+    Dir(EntryDir),
+    Plain(EntryPlain),
+}
+
+#[derive(Debug)]
+pub struct EntryDir {
+    pub name: String,
+    pub workdir: Workdir,
+}
+#[derive(Debug)]
+pub struct EntryPlain {
+    pub name: String,
+    pub workdir: Workdir,
 }
 
 impl TryFrom<String> for Workdir {
@@ -82,14 +93,14 @@ impl Config {
                 .entries
                 .into_iter()
                 .map(|e| match e.kind {
-                    FileEntryKind::Dir => Ok(Entry::Dir {
+                    FileEntryKind::Dir => Ok(Entry::Dir(EntryDir {
                         name: e.name,
                         workdir: e.workdir.try_into()?,
-                    }),
-                    FileEntryKind::Plain => Ok(Entry::Plain {
+                    })),
+                    FileEntryKind::Plain => Ok(Entry::Plain(EntryPlain {
                         name: e.name,
                         workdir: e.workdir.try_into()?,
-                    }),
+                    })),
                 })
                 .collect::<Result<Vec<Entry>>>()?,
         ));

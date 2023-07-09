@@ -59,30 +59,40 @@ impl<E: Execute> Tmux<E> {
         self.execute(&["list-sessions"])
     }
 
-    pub fn get_active_sessions(&self) -> Result<HashMap<String, SessionStats>> {
+    pub fn get_active_sessions(&self) -> Result<Sessions> {
         String::from_utf8_lossy(&self.list_sessions()?.stdout)
             .lines()
-            .try_fold(
-                HashMap::new(),
-                |mut acc, input| -> Result<HashMap<String, SessionStats>, anyhow::Error> {
-                    let (name, rest) = input.split_once(": ").context("")?;
-                    let (window_count, rest) = rest.split_once(' ').context("")?;
-                    let active = rest.contains("attached");
-                    acc.insert(
-                        name.to_owned(),
-                        SessionStats {
-                            window_count: window_count.parse()?,
-                            attached: active,
-                        },
-                    );
-                    Ok(acc)
-                },
-            )
+            .try_fold(Sessions(HashMap::new()), |mut acc, input| -> Result<Sessions> {
+                let (name, rest) = input.split_once(": ").context("")?;
+                let (window_count, rest) = rest.split_once(' ').context("")?;
+                let active = rest.contains("attached");
+                acc.0.insert(
+                    name.to_owned(),
+                    SessionStats {
+                        window_count: window_count.parse()?,
+                        attached: active,
+                    },
+                );
+                Ok(acc)
+            })
             .context("")
     }
 
     fn execute(&self, args: &[&str]) -> Result<Output> {
         self.executor.execute("tmux", args, self.verbose)
+    }
+}
+
+pub struct Sessions(HashMap<String, SessionStats>);
+impl Sessions {
+    pub fn value(self) -> HashMap<String, SessionStats> {
+        self.0
+    }
+    pub fn value_ref(&self) -> &HashMap<String, SessionStats> {
+        &self.0
+    }
+    pub fn value_ref_mut(&mut self) -> &mut HashMap<String, SessionStats> {
+        &mut self.0
     }
 }
 

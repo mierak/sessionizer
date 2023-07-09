@@ -2,8 +2,9 @@
 extern crate skim;
 
 use tmux_sessionizer::config::Config;
+use tmux_sessionizer::prompt_item::IntoPromptItems;
+use tmux_sessionizer::run;
 use tmux_sessionizer::tmux::Tmux;
-use tmux_sessionizer::{create_prompt_items, run};
 
 use anyhow::Result;
 
@@ -15,8 +16,8 @@ fn main() -> Result<()> {
     };
 
     let tmux = Tmux::new(&config);
-    let mut active_sessions = tmux.get_active_sessions()?;
-    let prompt_items = create_prompt_items(&config, entries, &mut active_sessions)?;
+    let active_sessions = tmux.get_active_sessions()?;
+    let prompt_items = entries.into_prompt_items(&config, active_sessions)?;
 
     run(prompt_items, &tmux, &config)
 }
