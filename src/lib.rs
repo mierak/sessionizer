@@ -19,11 +19,23 @@ use tmux::Tmux;
 pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
     match config.command {
         Some(Command::List) | None => run_selection(prompt_items, tmux, config),
-        Some(Command::Config) => {
-            println!(
-                "{}",
-                Config::get_dummy_config_file().context("Unable to serialize dummy config")?
-            );
+        Some(Command::Config { example }) => {
+            if example {
+                println!(
+                    "{}",
+                    Config::get_dummy_config_file().context("Unable to serialize dummy config")?
+                );
+                return Ok(());
+            }
+
+            let content = match std::fs::read_to_string(&config.config_path) {
+                Ok(content) => content,
+                Err(_) => format!(
+                    "Config file was not found at '{}'",
+                    config.config_path.to_string_lossy()
+                ),
+            };
+            println!("{content}");
             Ok(())
         }
         Some(Command::Switch { session_name: ref name }) => {

@@ -11,6 +11,7 @@ use crate::config::Config;
 use crate::config::Entry;
 use crate::config::EntryDir;
 use crate::config::EntryPlain;
+use crate::config::PreviewCommands;
 use crate::config::Workdir;
 use crate::tmux::SessionStats;
 use crate::tmux::Sessions;
@@ -21,6 +22,7 @@ pub struct PromptItem {
     pub name: String,
     pub workdir: Workdir,
     pub stats: Option<SessionStats>,
+    preview_cmd: Option<PreviewCommands>,
 }
 
 impl Entry {
@@ -38,6 +40,7 @@ impl SessionStats {
             workdir,
             name,
             stats: Some(self),
+            preview_cmd: None,
         });
         Ok(())
     }
@@ -63,7 +66,12 @@ impl EntryDir {
                     .context("Unable to convert path {:?} to str.")?
                     .to_owned();
 
+                if self.excludes.as_ref().map_or(false, |v| v.iter().any(|el| *el == name)) {
+                    return Ok(());
+                }
+
                 let mut prompt_item = PromptItem::new(name, dir_path.try_into()?);
+                prompt_item.preview_cmd = self.preview_cmd.to_owned();
                 prompt_item.name = format!("{} - {}", self.name, prompt_item.name);
                 prompt_item.populate_session_data(sessions);
 
@@ -79,6 +87,7 @@ impl EntryPlain {
     fn into_prompt_items<F: FnMut(PromptItem)>(self, sessions: &Sessions, mut for_each: F) -> Result<()> {
         let mut prompt_item = PromptItem::new(self.name, self.workdir);
         prompt_item.populate_session_data(sessions);
+        prompt_item.preview_cmd = self.preview_cmd;
 
         for_each(prompt_item);
 
@@ -91,6 +100,7 @@ impl PromptItem {
         return PromptItem {
             name,
             workdir,
+            preview_cmd: None,
             stats: None,
         };
     }
@@ -126,17 +136,27 @@ impl SkimItem for PromptItem {
         Cow::Owned(format!("{} {}", self.name, self.workdir.as_ref()))
     }
 
-    fn preview(&self, context: skim::PreviewContext) -> skim::ItemPreview {
-        if !context.cmd_query.is_empty() {
-            ItemPreview::Command(
-                context
-                    .cmd_query
+    fn preview(&self, _context: skim::PreviewContext) -> skim::ItemPreview {
+        let session_running = self.stats.is_some();
+
+        return match &self.preview_cmd {
+            Some(PreviewCommands {
+                running: Some(running), ..
+            }) if session_running => ItemPreview::Command(
+                running
                     .replace("{{workdir}}", self.workdir.as_ref())
                     .replace("{{name}}", &self.name),
-            )
-        } else {
-            ItemPreview::Text("".to_owned())
-        }
+            ),
+            Some(PreviewCommands {
+                not_running: Some(not_running),
+                ..
+            }) if !session_running => ItemPreview::Command(
+                not_running
+                    .replace("{{workdir}}", self.workdir.as_ref())
+                    .replace("{{name}}", &self.name),
+            ),
+            _ => ItemPreview::Text("".to_owned()),
+        };
     }
 }
 
@@ -147,9 +167,7 @@ pub trait IntoPromptItems {
 impl IntoPromptItems for Vec<Entry> {
     fn into_prompt_items(self, config: &Config, mut sessions: Sessions) -> Result<Vec<PromptItem>> {
         let mut res = self.into_iter().try_fold(Vec::new(), |mut acc, e| {
-            e.into_prompt_items(&sessions, |item| {
-                acc.push(item);
-            })?;
+            e.into_prompt_items(&sessions, |item| acc.push(item))?;
             Ok::<Vec<PromptItem>, anyhow::Error>(acc)
         })?;
 
@@ -165,19 +183,19 @@ impl IntoPromptItems for Vec<Entry> {
 
         if config.sort {
             #[rustfmt::skip]
-        res.sort_by(|a, b| {
-            match (a, b) {
-                (PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }, _) => Ordering::Less,
-                (_, PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }) => Ordering::Greater,
-                (PromptItem { stats: Some(_), .. }, PromptItem { stats: None, .. }) => Ordering::Less,
-                (PromptItem { stats: None, .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
-                (PromptItem { stats: Some(SessionStats { window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats { window_count: c2, .. }), .. }) if (c1 == c2) => Ordering::Equal,
-                (PromptItem { stats: Some(SessionStats { window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats { window_count: c2, .. }), .. }) if (c1 > c2) => Ordering::Less,
-                (PromptItem { stats: Some(_), .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
-                (PromptItem { name: name1, .. }, PromptItem { name: name2, .. }) => name1.to_lowercase().cmp(&name2.to_lowercase()),
+            res.sort_by(|a, b| {
+                match (a, b) {
+                    (PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }, _) => Ordering::Less,
+                    (_, PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }) => Ordering::Greater,
+                    (PromptItem { stats: Some(_), .. }, PromptItem { stats: None, .. }) => Ordering::Less,
+                    (PromptItem { stats: None, .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
+                    (PromptItem { stats: Some(SessionStats { window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats { window_count: c2, .. }), .. }) if (c1 == c2) => Ordering::Equal,
+                    (PromptItem { stats: Some(SessionStats { window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats { window_count: c2, .. }), .. }) if (c1 > c2) => Ordering::Less,
+                    (PromptItem { stats: Some(_), .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
+                    (PromptItem { name: name1, .. }, PromptItem { name: name2, .. }) => name1.to_lowercase().cmp(&name2.to_lowercase()),
 
-            }
-        });
+                }
+            });
         }
 
         return Ok(res);

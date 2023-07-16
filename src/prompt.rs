@@ -29,14 +29,11 @@ pub fn show(entries: Vec<PromptItem>, config: &Config) -> Result<Option<PromptIt
 
     let mut skim_opts = SkimOptionsBuilder::default();
 
-    let empty_cmd = "".to_owned();
-    let cmd = config.preview_cmd.as_ref().unwrap_or(&empty_cmd);
-    let preview = &format!("right:{}%:+20-10", &config.preview_width.unwrap_or(30));
-    if !cmd.is_empty() {
-        skim_opts.preview(Some(""));
-        skim_opts.preview_window(Some(preview));
-    }
-    skim_opts.cmd_query(Some(cmd));
+    let preview = &format!("right:{}%", &config.preview_width.unwrap_or(30));
+
+    skim_opts.cmd_query(Some(""));
+    skim_opts.preview(Some(""));
+    skim_opts.preview_window(Some(preview));
     skim_opts.height(Some("100%"));
     skim_opts.multi(false);
     skim_opts.reverse(true);
@@ -47,19 +44,17 @@ pub fn show(entries: Vec<PromptItem>, config: &Config) -> Result<Option<PromptIt
     return prompt_for_session(rx_item, skim_opts.build().context("Unable to build skim opts")?);
 }
 
-#[rustfmt::skip]
 fn gen_header(hide_banner: &bool) -> Result<String> {
-    let mut header = String::new();
-    if !hide_banner {
-        header.push_str(HEADER);
-    }
+    let mut header = if *hide_banner {
+        String::new()
+    } else {
+        String::from(HEADER)
+    };
     header.push_str(&format!(
-            "{:^3} {:^40} {:^60} {}",
-            "*",
-            "Name",
-            "Working Directory",
-            "Window Count",
-        ));
+        "{:^3} {:^40} {:^60} {}",
+        "*", "Name", "Working Directory", "Window Count",
+    ));
+
     return Ok(header);
 }
 
