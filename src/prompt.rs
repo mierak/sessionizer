@@ -29,7 +29,7 @@ pub fn show(entries: Vec<PromptItem>, config: &Config) -> Result<Option<PromptIt
 
     let mut skim_opts = SkimOptionsBuilder::default();
 
-    let preview = &format!("right:{}%", &config.preview_width.unwrap_or(30));
+    let preview = &format!("right:{}%", &config.preview_width);
 
     skim_opts.cmd_query(Some(""));
     skim_opts.preview(Some(""));
@@ -37,6 +37,7 @@ pub fn show(entries: Vec<PromptItem>, config: &Config) -> Result<Option<PromptIt
     skim_opts.height(Some("100%"));
     skim_opts.multi(false);
     skim_opts.reverse(true);
+    // skim_opts.bind(vec!["ctrl-x:execute(tmux kill-session -t {})", "ctrl-x:refresh-cmd"]);
 
     let header = gen_header(&config.hide_banner)?;
     skim_opts.header(Some(&header));

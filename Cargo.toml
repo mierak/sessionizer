@@ -12,6 +12,9 @@ serde = { version = "1.0.164", features = ["derive", "rc"] }
 skim = "0.10.4"
 toml = "0.7.5"
 
+[dev-dependencies]
+test-case = "3.1.0"
+
 [[bin]]
 name = "tms"
 path = "src/main.rs"

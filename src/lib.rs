@@ -18,12 +18,29 @@ use tmux::Tmux;
 
 pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
     match config.command {
-        Some(Command::List) | None => run_selection(prompt_items, tmux, config),
+        Some(Command::List { grouped }) => {
+            if let Some(selected_item) = prompt::show(prompt_items, config)? {
+                if config.dry_run {
+                    return Ok(());
+                }
+                switch_to_selected_item(&selected_item, tmux, config, grouped)?;
+            }
+            Ok(())
+        }
+        None => {
+            if let Some(selected_item) = prompt::show(prompt_items, config)? {
+                if config.dry_run {
+                    return Ok(());
+                }
+                switch_to_selected_item(&selected_item, tmux, config, false)?;
+            }
+            Ok(())
+        }
         Some(Command::Config { example }) => {
             if example {
                 println!(
                     "{}",
-                    Config::get_dummy_config_file().context("Unable to serialize dummy config")?
+                    Config::example_config().context("Unable to serialize dummy config")?
                 );
                 return Ok(());
             }
@@ -38,22 +55,46 @@ pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &C
             println!("{content}");
             Ok(())
         }
-        Some(Command::Switch { session_name: ref name }) => {
+        Some(Command::Switch { ref name, grouped }) => {
             let item = &PromptItem::new(name.to_owned(), config.default_dir.to_owned());
-            handle_selected_item(item, tmux, config)
+            switch_to_selected_item(item, tmux, config, grouped)
+        }
+        Some(Command::Kill { current, .. }) if current => {
+            if config.dry_run {
+                return Ok(());
+            }
+            let current_session = prompt_items
+                .iter()
+                .find(|i| i.stats.as_ref().map_or(false, |s| s.attached))
+                .context("Cannot kill current session because no session is attached.")?;
+            tmux.kill_session(&current_session.name)?;
+            Ok(())
+        }
+        Some(Command::Kill {
+            name: Some(ref name), ..
+        }) => {
+            if config.dry_run {
+                return Ok(());
+            }
+
+            tmux.kill_session(name)?;
+            Ok(())
+        }
+        Some(Command::Kill { .. }) => {
+            if let Some(selected_item) = prompt::show(prompt_items, config)? {
+                tmux.kill_session(&selected_item.name)?;
+            }
+            Ok(())
         }
     }
 }
 
-fn run_selection<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
-    match prompt::show(prompt_items, config) {
-        Ok(Some(selected_item)) => handle_selected_item(&selected_item, tmux, config),
-        Ok(None) => Ok(()), // do nothing, cancelled
-        Err(err) => return Err(err),
-    }
-}
-
-fn handle_selected_item<E: Execute>(item: &PromptItem, tmux: &Tmux<E>, config: &Config) -> Result<()> {
+fn switch_to_selected_item<E: Execute>(
+    item: &PromptItem,
+    tmux: &Tmux<E>,
+    config: &Config,
+    grouped: bool,
+) -> Result<()> {
     let tmux_running = tmux.is_tmux_running()?;
     let inside_tmux = std::env::var("TMUX").is_ok();
 
@@ -63,10 +104,6 @@ fn handle_selected_item<E: Execute>(item: &PromptItem, tmux: &Tmux<E>, config: &
         println!("is_tmux_running()?: {tmux_running:?}");
     };
 
-    if config.dry_run {
-        return Ok(());
-    }
-
     if !tmux_running && !inside_tmux {
         tmux.new_session(&item.name, item.workdir.as_ref(), false)?.print();
         return Ok(());
@@ -75,10 +112,15 @@ fn handle_selected_item<E: Execute>(item: &PromptItem, tmux: &Tmux<E>, config: &
         tmux.new_session(&item.name, item.workdir.as_ref(), true)?.print();
     }
 
+    if grouped {
+        tmux.new_grouped_session(&item.name)?.print();
+    }
+
     if !inside_tmux {
         tmux.attach(&item.name)?.print();
     } else {
         tmux.switch_client(&item.name)?.print();
     }
+
     return Ok(());
 }

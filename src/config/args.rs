@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 use clap::{command, Parser, Subcommand};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[command(name = "Tmux Sessionizer")]
 #[command(about = "Manage and switch tmux sessions with a fuzzy finder", long_about = None)]
 pub(crate) struct Args {
@@ -36,22 +36,33 @@ pub(crate) struct Args {
     pub command: Option<Command>,
 }
 
-#[derive(Subcommand, Clone, Debug)]
+#[derive(Subcommand, Clone, Debug, PartialEq)]
 pub enum Command {
     /// Default behaviour. List all sessions from config and choose which one to switch to
-    List,
+    List {
+        #[arg(long, short, default_value_t = false)]
+        grouped: bool,
+    },
     /// Directly switches to session
     Switch {
+        #[arg(long, short, default_value_t = false)]
+        grouped: bool,
         #[arg(
             name = "NAME",
             help = "Session name to switch directly to. Will create the session if it does not exist"
         )]
-        session_name: String,
+        name: String,
     },
     /// Prints config with placeholder values
     Config {
         #[arg(short, long, default_value_t = false)]
         example: bool,
+    },
+    Kill {
+        #[arg(short, long, default_value_t = false, group = "kill")]
+        current: bool,
+        #[arg(short, long,  group = "kill")]
+        name: Option<String>,
     },
 }
 

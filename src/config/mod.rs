@@ -10,7 +10,6 @@ use crate::config::{
 use anyhow::Result;
 use anyhow::{anyhow, Context};
 use clap::Parser;
-use file_config::FileEntry;
 
 pub use args::Command;
 pub use file_config::FilePreviewCommands;
@@ -33,20 +32,20 @@ impl From<FilePreviewCommands> for PreviewCommands {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Workdir(std::sync::Arc<str>);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Entry {
     Dir(EntryDir),
     Plain(EntryPlain),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct EntryDir {
     pub name: String,
     pub workdir: Workdir,
     pub excludes: Option<Vec<String>>,
     pub preview_cmd: Option<PreviewCommands>,
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct EntryPlain {
     pub name: String,
     pub workdir: Workdir,
@@ -75,7 +74,7 @@ pub struct Config {
     pub verbose: bool,
     pub sort: bool,
     pub preview_commands: Option<PreviewCommands>,
-    pub preview_width: Option<u32>,
+    pub preview_width: u32,
     pub default_dir: Workdir,
     pub dry_run: bool,
 }
@@ -144,12 +143,15 @@ impl From<(Option<&PreviewCommands>, Option<FilePreviewCommands>)> for MaybePrev
 
 impl Config {
     pub fn read() -> Result<ConfigWithEntries> {
-        let mut args = Args::parse();
+        let args = Args::parse();
         let file_config: FileConfig = toml::from_str(
             &std::fs::read_to_string(&args.config)
                 .context(format!("Unable to read config file '{:?}'", &args.config))?,
         )?;
+        Self::construct(args, file_config)
+    }
 
+    fn construct(mut args: Args, file_config: FileConfig) -> Result<ConfigWithEntries> {
         let preview = args.preview.take().map(Arc::from);
         let preview_no_session = args.preview_no_session.take().map(Arc::from);
         let preview_commands =
@@ -185,8 +187,8 @@ impl Config {
             Config {
                 preview_commands,
                 config_path: args.config,
-                command: args.command.to_owned(),
-                hide_banner: args.no_banner || !file_config.banner,
+                command: args.command.take(),
+                hide_banner: args.no_banner || file_config.no_banner,
                 verbose: args.verbose || file_config.verbose,
                 sort: args.sort || file_config.sort,
                 preview_width: file_config.preview_width,
@@ -197,39 +199,226 @@ impl Config {
         ));
     }
 
-    pub fn get_dummy_config_file() -> Result<String> {
-        let home = std::env::var("HOME").context("HOME env variable not set")?;
-        toml::to_string(&FileConfig {
-            default_dir: "/".to_owned(),
-            banner: true,
-            verbose: false,
-            sort: true,
-            preview_cmd: Some(FilePreviewCommands {
-                running:
-                    Arc::from("tmux capture-pane -pe -t $(tmux list-panes -F '#{pane_id}' -s -t '{{name}}' -f '#{window_active}')".to_owned()),
-                not_running: Some(Arc::from("ls -la".to_owned())),
-            }),
-            preview_width: Some(30),
-            entries: vec![
+    pub fn example_config() -> Result<String> {
+        toml::to_string(&FileConfig::default()).context("Unable to serialize example config")
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    mod construct {
+        use std::{path::PathBuf, str::FromStr, sync::Arc};
+        use test_case::test_case;
+
+        use crate::config::{
+            file_config::{FileEntry, FileEntryKind},
+            Command, Entry, EntryDir, EntryPlain, PreviewCommands,
+        };
+
+        use super::super::{args::Args, file_config::FileConfig, Config};
+
+        fn setup() -> (Args, FileConfig) {
+            return (Args::default(), FileConfig::default());
+        }
+
+        #[test]
+        fn entries() {
+            let (args, mut file) = setup();
+            file.preview_cmd = None;
+            file.entries = vec![
                 FileEntry {
-                    name: "My session".to_owned(),
-                    workdir: "/".to_owned(),
                     kind: FileEntryKind::Plain,
-                    preview_cmd: Some(FilePreviewCommands {
-                        running: Arc::from("ls -la".to_owned()),
-                        not_running: Some(Arc::from("ls -la".to_owned())),
-                    }),
+                    name: "plain name".to_owned(),
+                    workdir: "/home/test/".to_owned(),
                     excludes: None,
+                    preview_cmd: None,
                 },
                 FileEntry {
-                    name: "My Projects Dir".to_owned(),
-                    workdir: home,
                     kind: FileEntryKind::Dir,
+                    name: "plain name".to_owned(),
+                    workdir: "/home/test/".to_owned(),
+                    excludes: Some(vec!["dir1".to_owned()]),
                     preview_cmd: None,
-                    excludes: Some(vec!["somedir".to_owned()]),
                 },
-            ],
-        })
-        .context("Unable to serialize default config")
+            ];
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(
+                result.1[0],
+                Entry::Plain(EntryPlain {
+                    name: "plain name".to_owned(),
+                    workdir: "/home/test/".to_owned().try_into().unwrap(),
+                    preview_cmd: None
+                })
+            );
+            assert_eq!(
+                result.1[1],
+                Entry::Dir(EntryDir {
+                    name: "plain name".to_owned(),
+                    workdir: "/home/test/".to_owned().try_into().unwrap(),
+                    preview_cmd: None,
+                    excludes: Some(vec!["dir1".to_owned()]),
+                })
+            );
+        }
+
+        #[test]
+        fn default_dir() {
+            let (args, mut file) = setup();
+            file.default_dir = "some def dir".to_owned();
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(result.0.default_dir, "some def dir".to_owned().try_into().unwrap());
+        }
+
+        #[test]
+        fn preview_width() {
+            let (args, mut file) = setup();
+            file.preview_width = 99;
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(result.0.preview_width, 99);
+        }
+
+        #[test]
+        fn dry_run() {
+            let (mut args, file) = setup();
+            args.dry_run = true;
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert!(result.0.dry_run);
+        }
+
+        #[test]
+        fn correct_config_path() {
+            let pathbuf = PathBuf::from_str("/home/test/some/path/file.toml").unwrap();
+            let (mut args, file) = setup();
+            args.config = pathbuf.clone();
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(result.0.config_path, pathbuf);
+        }
+
+        #[test]
+        fn correct_command() {
+            let (mut args, file) = setup();
+            args.command = Some(Command::Switch {
+                name: "test".to_owned(),
+                grouped: true,
+            });
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(
+                result.0.command,
+                Some(Command::Switch {
+                    name: "test".to_owned(),
+                    grouped: true,
+                })
+            );
+        }
+
+        #[test_case(true, false, true ; "disabled in args, enabled in file")]
+        #[test_case(false, true, true ; "enabled in args, disabled in file")]
+        #[test_case(false, false, false ; "enabled in args, enabled in file")]
+        #[test_case(true, true, true ; "disabled in args, disabled in file")]
+        fn no_banner(arg_val: bool, file_val: bool, expected: bool) {
+            let (mut args, mut file) = setup();
+            args.no_banner = arg_val;
+            file.no_banner = file_val;
+
+            let result = Config::construct(args, file).unwrap();
+            assert_eq!(result.0.hide_banner, expected);
+        }
+
+        #[test_case(true, false, true ; "enabled in args, disabled in file")]
+        #[test_case(false, true, true ; "disabled in args, enabled in file")]
+        #[test_case(false, false, false ; "disabled in args, disabled in file")]
+        #[test_case(true, true, true ; "enabled in args, enabled in file")]
+        fn verbose(arg_val: bool, file_val: bool, expected: bool) {
+            let (mut args, mut file) = setup();
+            args.verbose = arg_val;
+            file.verbose = file_val;
+
+            let result = Config::construct(args, file).unwrap();
+            assert_eq!(result.0.verbose, expected);
+        }
+
+        #[test_case(true, false, true ; "enabled in args, disabled in file")]
+        #[test_case(false, true, true ; "disabled in args, enabled in file")]
+        #[test_case(false, false, false ; "disabled in args, disabled in file")]
+        #[test_case(true, true, true ; "enabled in args, enabled in file")]
+        fn sort(arg_val: bool, file_val: bool, expected: bool) {
+            let (mut args, mut file) = setup();
+            args.sort = arg_val;
+            file.sort = file_val;
+
+            let result = Config::construct(args, file).unwrap();
+            assert_eq!(result.0.sort, expected);
+        }
+
+        #[test]
+        fn preview_commands_only_args() {
+            let (mut args, file) = setup();
+            args.preview = Some("preview".to_owned());
+            args.preview_no_session = Some("no sess".to_owned());
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(
+                result.0.preview_commands,
+                Some(PreviewCommands {
+                    running: Some(Arc::from("preview")),
+                    not_running: Some(Arc::from("no sess"))
+                })
+            )
+        }
+
+        #[test]
+        fn preview_commands_only_file() {
+            let (args, mut file) = setup();
+            file.preview_cmd = Some(crate::config::FilePreviewCommands {
+                running: Arc::from("preview"),
+                not_running: Some(Arc::from("no sess")),
+            });
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(
+                result.0.preview_commands,
+                Some(PreviewCommands {
+                    running: Some(Arc::from("preview")),
+                    not_running: Some(Arc::from("no sess"))
+                })
+            )
+        }
+
+        #[test]
+        fn preview_commands_only_args_precedence() {
+            let (mut args, mut file) = setup();
+            args.preview = Some("preview".to_owned());
+            args.preview_no_session = Some("no sess".to_owned());
+
+            file.preview_cmd = Some(crate::config::FilePreviewCommands {
+                running: Arc::from("preview file"),
+                not_running: Some(Arc::from("no sess file")),
+            });
+
+            let result = Config::construct(args, file).unwrap();
+
+            assert_eq!(
+                result.0.preview_commands,
+                Some(PreviewCommands {
+                    running: Some(Arc::from("preview")),
+                    not_running: Some(Arc::from("no sess"))
+                })
+            )
+        }
     }
 }

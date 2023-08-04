@@ -72,7 +72,10 @@ impl EntryDir {
 
                 let mut prompt_item = PromptItem::new(name, dir_path.try_into()?);
                 prompt_item.preview_cmd = self.preview_cmd.to_owned();
-                prompt_item.name = format!("{} - {}", self.name, prompt_item.name);
+                prompt_item.name = self
+                    .name
+                    .replace("{{workdir}}", self.workdir.as_ref())
+                    .replace("{{name}}", &prompt_item.name);
                 prompt_item.populate_session_data(sessions);
 
                 for_each(prompt_item);
@@ -117,7 +120,7 @@ impl SkimItem for PromptItem {
         match self.stats {
             Some(ref stats) => Cow::Owned(format!(
                 "{:<3} {:<40} {:<60} {}",
-                if stats.attached { "(*)" } else { "" },
+                if stats.attached { "(*)" } else { "( )" },
                 self.name,
                 self.workdir.as_ref(),
                 format_args!("{} window(s)", stats.window_count)
@@ -133,7 +136,7 @@ impl SkimItem for PromptItem {
     }
 
     fn output(&self) -> Cow<str> {
-        Cow::Owned(format!("{} {}", self.name, self.workdir.as_ref()))
+        Cow::Borrowed(&self.name)
     }
 
     fn preview(&self, _context: skim::PreviewContext) -> skim::ItemPreview {

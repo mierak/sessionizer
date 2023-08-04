@@ -23,12 +23,25 @@ impl Tmux<Executor> {
     }
 }
 
+impl Default for Tmux<Executor> {
+    fn default() -> Self {
+        Self {
+            executor: Executor,
+            verbose: false,
+        }
+    }
+}
+
 impl<E: Execute> Tmux<E> {
     pub fn new_with_executor(config: &crate::config::Config, executor: E) -> Self {
         Self {
             executor,
             verbose: config.verbose,
         }
+    }
+
+    pub fn new_grouped_session(&self, session_name: &str) -> Result<Output> {
+        self.execute(&["new-session", "-t", session_name])
     }
 
     pub fn new_session(&self, session_name: &str, cwd: &str, detached: bool) -> Result<Output> {
@@ -57,6 +70,10 @@ impl<E: Execute> Tmux<E> {
 
     pub fn list_sessions(&self) -> Result<Output> {
         self.execute(&["list-sessions"])
+    }
+
+    pub fn kill_session(&self, session_name: &str) -> Result<Output> {
+        self.execute(&["kill-session", "-t", session_name])
     }
 
     pub fn get_active_sessions(&self) -> Result<Sessions> {
