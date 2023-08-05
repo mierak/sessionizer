@@ -1,12 +1,13 @@
 # Tmux sessionizer
 
-Manage your tmux session with a fuzzy finder with some additional candy. This tool is a personalized and opinionated spin on ThePrimeagen's [tmux-sessionizer](https://github.com/ThePrimeagen/.dotfiles/blob/master/bin/.local/scripts/tmux-sessionizer). Written to get my feet wet in Rust and to add some functionality to the script that were missing.
+Manage your tmux session with a fuzzy finder and some additional quality of life features. This tool is a personalized and opinionated spin on ThePrimeagen's [tmux-sessionizer](https://github.com/ThePrimeagen/.dotfiles/blob/master/bin/.local/scripts/tmux-sessionizer). Written to get my feet wet in Rust and to add some functionalities to the script that were missing.
+
 Those include:
 * Configurability. I want to specify directories to scrape as well as simple sessions with custom work dirs
 * Preview of sessions with custom commands
 * Attach to a session as a grouped session
 
-Please note that below may not be always up to date as the projects is still changing!
+Please note that configuration below may not be always up to date as the projects is still changing!
 
 ## Installation
 ```bash
@@ -18,7 +19,7 @@ tms config -e > "$XDG_CONFIG_HOME/tmux/sessionizer.toml"
 # or if you do not have XDG_CONFIG_HOME set
 tms config -e > "$HOME/.config/tmux/sessionizer.toml"
 ```
-This will create example config as seen below. Customize the entries in your favorite editor.
+This will create an example config as seen below. Customize the entries in your favorite editor.
 
 ## Usage
 I suggest putting following bind in your tmux config:
@@ -48,7 +49,7 @@ kind = "Plain" # Plain entry simply displays as is
 name = "My session"
 workdir = "/"
 
-# You can also specify preview commants on a per entry basis.
+# You can also specify preview commands on a per entry basis.
 [entry.preview_cmd]
 running = "ls -la"
 not_running = "ls -la"
@@ -62,7 +63,7 @@ excludes = ["somedir"] # You can also define directories to exclude.
 ```
 
 ## CLI help
-Running tms -h will give you following output. Commands have their own help as well.
+Running `tms -h` will give you following output. Commands have their own help as well.
 
 ```
 Usage: tms [OPTIONS] [COMMAND]
