@@ -22,6 +22,14 @@ pub(crate) struct Args {
         short,
         long,
         default_value_t = false,
+        help = "Create the session if needed but do not switch to it. Print the session name to stdout. Useful for scripting. ie. 'tmux switch-client -t $(tms -e)'"
+    )]
+    pub eval_mode: bool,
+
+    #[arg(
+        short,
+        long,
+        default_value_t = false,
         help = "Sort the entries. Running sessions, most windows first."
     )]
     pub sort: bool,
@@ -61,7 +69,7 @@ pub enum Command {
     Kill {
         #[arg(short, long, default_value_t = false, group = "kill")]
         current: bool,
-        #[arg(short, long,  group = "kill")]
+        #[arg(short, long, group = "kill")]
         name: Option<String>,
     },
 }

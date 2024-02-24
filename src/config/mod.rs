@@ -76,6 +76,7 @@ pub struct Config {
     pub preview_commands: Option<PreviewCommands>,
     pub preview_width: u32,
     pub default_dir: Workdir,
+    pub eval_mode: bool,
     pub dry_run: bool,
 }
 
@@ -186,6 +187,7 @@ impl Config {
         return Ok(ConfigWithEntries(
             Config {
                 preview_commands,
+                eval_mode: args.eval_mode,
                 config_path: args.config,
                 command: args.command.take(),
                 hide_banner: args.no_banner || file_config.no_banner,

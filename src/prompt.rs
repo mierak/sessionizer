@@ -63,7 +63,7 @@ fn prompt_for_session(rx_item: SkimItemReceiver, opts: SkimOptions) -> Result<Op
     let selected_items = Skim::run_with(&opts, Some(rx_item))
         .filter(|out| !out.is_abort)
         .map(|out| out.selected_items)
-        .unwrap_or_else(Vec::new);
+        .unwrap_or_default();
 
     let selected_items = selected_items
         .into_iter()

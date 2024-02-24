@@ -105,11 +105,22 @@ fn switch_to_selected_item<E: Execute>(
     };
 
     if !tmux_running && !inside_tmux {
-        tmux.new_session(&item.name, item.workdir.as_ref(), false)?.print();
+        if config.eval_mode {
+            tmux.new_session(&item.name, item.workdir.as_ref(), true)?.print();
+            println!("{}", item.name);
+        } else {
+            tmux.new_session(&item.name, item.workdir.as_ref(), false)?.print();
+        }
         return Ok(());
     }
+
     if !tmux.has_session(&item.name)? {
         tmux.new_session(&item.name, item.workdir.as_ref(), true)?.print();
+    }
+
+    if config.eval_mode {
+        println!("{}", item.name);
+        return Ok(());
     }
 
     if grouped {

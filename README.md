@@ -82,6 +82,8 @@ Options:
           Disable the big banner in list mode
   -d, --dry-run
           Dry run, dont switch session.
+  -e, --eval-mode
+          Create the session if needed but do not switch to it. Print the session name to stdout. Useful for scripting. ie. 'tmux switch-client -t $(tms -e)'
   -v, --verbose
           Enable verbose output.
   -s, --sort
