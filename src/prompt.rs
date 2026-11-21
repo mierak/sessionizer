@@ -3,7 +3,11 @@ use std::fmt::Display;
 use anyhow::{anyhow, Context, Result};
 use skim::{prelude::SkimOptionsBuilder, Skim, SkimItem, SkimOptions, SkimOutput};
 
-use crate::{config::Config, matching::running_sessions_first_matcher, prompt_item::PromptItem};
+use crate::{
+    config::Config,
+    matching::running_sessions_first_matcher,
+    prompt_item::{ColumnWidths, PromptItem},
+};
 
 #[rustfmt::skip]
 static HEADER: &str = concat!(
@@ -27,6 +31,13 @@ pub fn show_with_current_pinned(entries: Vec<PromptItem>, config: &Config) -> Re
 }
 
 fn run_picker(entries: Vec<PromptItem>, pinned: Option<PromptItem>, config: &Config) -> Result<Option<PromptItem>> {
+    let column_widths = ColumnWidths::fitting(entries.iter().chain(pinned.as_ref()));
+    let entries = entries
+        .into_iter()
+        .map(|entry| entry.with_column_widths(column_widths))
+        .collect();
+    let pinned = pinned.map(|pinned| pinned.with_column_widths(column_widths));
+
     let mut skim_opts = SkimOptionsBuilder::default();
 
     let preview = format!("right:{}%", config.preview_width);
@@ -34,24 +45,22 @@ fn run_picker(entries: Vec<PromptItem>, pinned: Option<PromptItem>, config: &Con
     skim_opts.preview("");
     skim_opts.preview_window(preview.as_str());
     skim_opts.reverse(true);
+    skim_opts.no_hscroll(true);
     // skim_opts.bind(vec!["ctrl-x:execute(tmux kill-session -t {})", "ctrl-x:refresh-cmd"]);
 
-    let header = gen_header(&config.hide_banner, pinned.as_ref())?;
+    let header = gen_header(&config.hide_banner, pinned.as_ref(), column_widths)?;
     skim_opts.header(header);
 
     return prompt_for_session(entries, skim_opts.build().context("Unable to build skim opts")?);
 }
 
-fn gen_header(hide_banner: &bool, pinned: Option<&PromptItem>) -> Result<String> {
+fn gen_header(hide_banner: &bool, pinned: Option<&PromptItem>, column_widths: ColumnWidths) -> Result<String> {
     let mut header = if *hide_banner {
         String::new()
     } else {
         String::from(HEADER)
     };
-    header.push_str(&format!(
-        "{:^3} {:^40} {:^60} {}",
-        "*", "Name", "Working Directory", "Window Count",
-    ));
+    header.push_str(&column_widths.header());
     if let Some(pinned) = pinned {
         header.push('\n');
         header.push_str(&pinned.text());
@@ -100,6 +109,7 @@ mod tests {
     use skim::SkimItem;
 
     use super::gen_header;
+    use crate::prompt_item::ColumnWidths;
     use crate::{prompt_item::PromptItem, tmux::SessionStats};
 
     #[test]
@@ -112,8 +122,8 @@ mod tests {
             current: true,
         });
 
-        let without_pinned = gen_header(&true, None).unwrap();
-        let with_pinned = gen_header(&true, Some(&current)).unwrap();
+        let without_pinned = gen_header(&true, None, ColumnWidths::default()).unwrap();
+        let with_pinned = gen_header(&true, Some(&current), ColumnWidths::default()).unwrap();
 
         assert_eq!(without_pinned.lines().count(), 1);
         assert_eq!(with_pinned.lines().count(), 2);

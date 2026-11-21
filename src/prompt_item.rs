@@ -23,6 +23,46 @@ pub struct PromptItem {
     pub workdir: Workdir,
     pub stats: Option<SessionStats>,
     preview_cmd: Option<PreviewCommands>,
+    column_widths: ColumnWidths,
+}
+
+const NAME_TITLE: &str = "Name";
+const WORKDIR_TITLE: &str = "Working Directory";
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColumnWidths {
+    name: usize,
+    workdir: usize,
+}
+
+impl Default for ColumnWidths {
+    fn default() -> Self {
+        Self {
+            name: NAME_TITLE.len(),
+            workdir: WORKDIR_TITLE.len(),
+        }
+    }
+}
+
+impl ColumnWidths {
+    pub fn fitting<'a>(items: impl IntoIterator<Item = &'a PromptItem>) -> Self {
+        items.into_iter().fold(Self::default(), |widths, item| Self {
+            name: widths.name.max(item.name.chars().count()),
+            workdir: widths.workdir.max(item.workdir.as_ref().chars().count()),
+        })
+    }
+
+    pub fn header(&self) -> String {
+        self.row(" * ", NAME_TITLE, WORKDIR_TITLE, "Window Count")
+    }
+
+    fn row(&self, marker: &str, name: &str, workdir: &str, window_count: &str) -> String {
+        format!(
+            "{marker:<3} {name:<name_width$} {workdir:<workdir_width$} {window_count}",
+            name_width = self.name,
+            workdir_width = self.workdir,
+        )
+    }
 }
 
 impl Entry {
@@ -36,12 +76,9 @@ impl Entry {
 
 impl SessionStats {
     fn into_prompt_items<F: FnMut(PromptItem)>(self, name: String, workdir: Workdir, mut for_each: F) -> Result<()> {
-        for_each(PromptItem {
-            workdir,
-            name,
-            stats: Some(self),
-            preview_cmd: None,
-        });
+        let mut item = PromptItem::new(name, workdir);
+        item.stats = Some(self);
+        for_each(item);
         Ok(())
     }
 }
@@ -107,7 +144,13 @@ impl PromptItem {
             workdir,
             preview_cmd: None,
             stats: None,
+            column_widths: ColumnWidths::default(),
         };
+    }
+
+    pub fn with_column_widths(mut self, column_widths: ColumnWidths) -> Self {
+        self.column_widths = column_widths;
+        self
     }
 
     pub fn is_running(&self) -> bool {
@@ -127,22 +170,17 @@ impl PromptItem {
 
 impl SkimItem for PromptItem {
     fn text(&self) -> Cow<'_, str> {
-        match self.stats {
-            Some(ref stats) => Cow::Owned(format!(
-                "{:<3} {:<40} {:<60} {}",
+        let (marker, window_count) = match &self.stats {
+            Some(stats) => (
                 if stats.attached { "(*)" } else { "( )" },
-                self.name,
-                self.workdir.as_ref(),
-                format_args!("{} window(s)", stats.window_count)
-            )),
-            None => Cow::Owned(format!(
-                "{:<3} {:<40} {:<60} {}",
-                "",
-                self.name,
-                self.workdir.as_ref(),
-                ""
-            )),
-        }
+                format!("{} window(s)", stats.window_count),
+            ),
+            None => ("", String::new()),
+        };
+        Cow::Owned(
+            self.column_widths
+                .row(marker, &self.name, self.workdir.as_ref(), &window_count),
+        )
     }
 
     fn output(&self) -> Cow<'_, str> {
@@ -219,12 +257,27 @@ fn order_items(items: &mut [PromptItem], sort: bool) {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use skim::SkimItem;
     use std::fs;
     use test_case::test_case;
 
-    use super::{order_items, PromptItem};
+    use super::{order_items, ColumnWidths, PromptItem};
     use crate::config::EntryDir;
     use crate::tmux::{SessionStats, Sessions};
+
+    #[test]
+    fn rows_and_header_share_column_positions_regardless_of_name_length() {
+        let short = running("a", 2, true, false);
+        let long = not_running("a session name much longer than forty characters");
+        let widths = ColumnWidths::fitting([&short, &long]);
+
+        let short_row = short.with_column_widths(widths).text().into_owned();
+        let long_row = long.with_column_widths(widths).text().into_owned();
+        let header = widths.header();
+
+        assert_eq!(short_row.find('/'), long_row.find('/'));
+        assert_eq!(header.find("Window Count"), short_row.find("2 window(s)"));
+    }
 
     fn not_running(name: &str) -> PromptItem {
         PromptItem::new(name.to_owned(), "/".to_owned().try_into().unwrap())
