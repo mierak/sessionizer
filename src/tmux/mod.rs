@@ -44,24 +44,17 @@ impl<E: Execute> Tmux<E> {
         self.execute(&["new-session", "-t", session_name])
     }
 
-    pub fn new_session(&self, session_name: &str, cwd: &str, detached: bool) -> Result<Output> {
-        if detached {
-            self.execute(&["new-session", "-ds", session_name, "-c", cwd])
-        } else {
-            self.execute(&["new-session", "-s", session_name, "-c", cwd])
-        }
-    }
-
-    pub fn is_tmux_running(&self) -> Result<bool> {
-        Ok(self.executor.execute("pgrep", &["tmux"], false)?.status.success())
+    pub fn new_session(&self, session_name: &str, cwd: &str) -> Result<Output> {
+        self.execute(&["new-session", "-ds", session_name, "-c", cwd])
     }
 
     pub fn has_session(&self, session_name: &str) -> Result<bool> {
         Ok(self.execute(&["has-session", "-t", session_name])?.status.success())
     }
 
-    pub fn attach(&self, session_name: &str) -> Result<Output> {
-        self.execute(&["attach", "-t", session_name])
+    pub fn attach(&self, session_name: &str) -> Result<()> {
+        self.executor
+            .replace_process("tmux", &["attach", "-t", session_name], self.verbose)
     }
 
     pub fn switch_client(&self, session_name: &str) -> Result<Output> {

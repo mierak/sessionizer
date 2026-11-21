@@ -1,9 +1,20 @@
+use std::os::unix::process::CommandExt;
 use std::process::Stdio;
 use std::process::{Command, ExitStatus};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 pub trait Execute {
+    fn replace_process(&self, cmd: &str, args: &[&str], verbose: bool) -> Result<()> {
+        let mut cmd = Command::new(cmd);
+        cmd.args(args);
+        if verbose {
+            println!("Replacing process with cmd: '{cmd:?}'");
+        }
+        let error = cmd.exec();
+        Err(error).context(format!("Unable to run '{cmd:?}'"))
+    }
+
     fn execute(&self, cmd: &str, args: &[&str], verbose: bool) -> Result<Output> {
         let mut cmd = Command::new(cmd);
         let cmd = cmd.args(args);

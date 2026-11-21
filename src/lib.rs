@@ -95,27 +95,15 @@ fn switch_to_selected_item<E: Execute>(
     config: &Config,
     grouped: bool,
 ) -> Result<()> {
-    let tmux_running = tmux.is_tmux_running()?;
     let inside_tmux = std::env::var("TMUX").is_ok();
 
     if config.verbose {
         println!("Selected_item: {item:?}");
         println!("inside_tmux: {inside_tmux:?}");
-        println!("is_tmux_running()?: {tmux_running:?}");
     };
 
-    if !tmux_running && !inside_tmux {
-        if config.eval_mode {
-            tmux.new_session(&item.name, item.workdir.as_ref(), true)?.print();
-            println!("{}", item.name);
-        } else {
-            tmux.new_session(&item.name, item.workdir.as_ref(), false)?.print();
-        }
-        return Ok(());
-    }
-
     if !tmux.has_session(&item.name)? {
-        tmux.new_session(&item.name, item.workdir.as_ref(), true)?.print();
+        tmux.new_session(&item.name, item.workdir.as_ref())?.print();
     }
 
     if config.eval_mode {
@@ -127,11 +115,10 @@ fn switch_to_selected_item<E: Execute>(
         tmux.new_grouped_session(&item.name)?.print();
     }
 
-    if !inside_tmux {
-        tmux.attach(&item.name)?.print();
-    } else {
+    if inside_tmux {
         tmux.switch_client(&item.name)?.print();
+        return Ok(());
     }
 
-    return Ok(());
+    return tmux.attach(&item.name);
 }
