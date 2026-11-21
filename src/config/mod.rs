@@ -148,7 +148,7 @@ impl Config {
         let args = Args::parse();
         let file_config: FileConfig = toml::from_str(
             &std::fs::read_to_string(&args.config)
-                .context(format!("Unable to read config file '{:?}'", &args.config))?,
+                .context(format!("Unable to read config file '{:?}'", args.config))?,
         )?;
         Self::construct(args, file_config)
     }

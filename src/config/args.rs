@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 
-use clap::{command, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug, Default)]
 #[command(name = "Tmux Sessionizer")]

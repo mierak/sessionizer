@@ -60,14 +60,14 @@ impl EntryDir {
                     .context("Unable to convert path {:?} to str.")?
                     .to_owned();
 
-                let name = dir_path
-                    .split('/')
-                    .last()
-                    .context("Unable to convert path {:?} to str.")?
+                let name = entry
+                    .file_name()
+                    .to_str()
+                    .context("Unable to convert dir name to str.")?
                     .to_owned();
 
                 let is_hidden = name.starts_with('.');
-                let is_excluded = self.excludes.as_ref().map_or(false, |v| v.iter().any(|el| *el == name));
+                let is_excluded = self.excludes.as_ref().is_some_and(|excludes| excludes.contains(&name));
                 if (is_hidden && !self.show_hidden) || is_excluded {
                     return Ok(());
                 }
@@ -126,7 +126,7 @@ impl PromptItem {
 }
 
 impl SkimItem for PromptItem {
-    fn text(&self) -> Cow<str> {
+    fn text(&self) -> Cow<'_, str> {
         match self.stats {
             Some(ref stats) => Cow::Owned(format!(
                 "{:<3} {:<40} {:<60} {}",
@@ -145,7 +145,7 @@ impl SkimItem for PromptItem {
         }
     }
 
-    fn output(&self) -> Cow<str> {
+    fn output(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.name)
     }
 
