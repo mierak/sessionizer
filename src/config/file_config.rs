@@ -10,6 +10,8 @@ pub struct FileConfig {
     pub verbose: bool,
     #[serde(default = "default_bool_true")]
     pub sort: bool,
+    #[serde(default = "default_bool_false")]
+    pub show_hidden: bool,
     pub preview_cmd: Option<FilePreviewCommands>,
     #[serde(default = "default_preview_width")]
     pub preview_width: u32,
@@ -30,6 +32,7 @@ pub struct FileEntry {
     pub name: String,
     pub workdir: String,
     pub excludes: Option<Vec<String>>,
+    pub show_hidden: Option<bool>,
     pub preview_cmd: Option<FilePreviewCommands>,
 }
 
@@ -46,6 +49,7 @@ impl Default for FileConfig {
             no_banner: true,
             verbose: false,
             sort: true,
+            show_hidden: false,
             preview_cmd: Some(FilePreviewCommands {
                 running:
                     Arc::from("tmux capture-pane -pe -t $(tmux list-panes -F '#{pane_id}' -s -t '{{name}}' -f '#{window_active}')".to_owned()),
@@ -62,6 +66,7 @@ impl Default for FileConfig {
                         not_running: Some(Arc::from("ls -la".to_owned())),
                     }),
                     excludes: None,
+                    show_hidden: None,
                 },
                 FileEntry {
                     name: "My Projects Dir - {{name}} {{workdir}}".to_owned(),
@@ -69,6 +74,7 @@ impl Default for FileConfig {
                     kind: FileEntryKind::Dir,
                     preview_cmd: None,
                     excludes: Some(vec!["somedir".to_owned()]),
+                    show_hidden: None,
                 },
             ],
         }

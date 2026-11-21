@@ -100,6 +100,7 @@ impl<E: Execute> Tmux<E> {
     }
 }
 
+#[derive(Default)]
 pub struct Sessions(HashMap<String, SessionStats>);
 impl Sessions {
     pub fn value(self) -> HashMap<String, SessionStats> {

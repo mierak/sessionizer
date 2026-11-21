@@ -43,6 +43,7 @@ pub struct EntryDir {
     pub name: String,
     pub workdir: Workdir,
     pub excludes: Option<Vec<String>>,
+    pub show_hidden: bool,
     pub preview_cmd: Option<PreviewCommands>,
 }
 #[derive(Debug, PartialEq)]
@@ -165,12 +166,19 @@ impl Config {
                     name: ele.name,
                     workdir: ele.workdir.try_into()?,
                     excludes: ele.excludes,
+                    show_hidden: ele.show_hidden.unwrap_or(file_config.show_hidden),
                     preview_cmd: MaybePreviewCommands::from((preview_commands.as_ref(), ele.preview_cmd)).0,
                 }),
                 FileEntryKind::Plain => {
                     if ele.excludes.is_some() {
                         return Err(anyhow!(
                             "Entry '{}' is invalid. Excludes are not allowed on 'Plain' entries.",
+                            ele.name
+                        ));
+                    }
+                    if ele.show_hidden.is_some() {
+                        return Err(anyhow!(
+                            "Entry '{}' is invalid. 'show_hidden' is not allowed on 'Plain' entries.",
                             ele.name
                         ));
                     }
@@ -234,6 +242,7 @@ mod tests {
                     name: "plain name".to_owned(),
                     workdir: "/home/test/".to_owned(),
                     excludes: None,
+                    show_hidden: None,
                     preview_cmd: None,
                 },
                 FileEntry {
@@ -241,6 +250,7 @@ mod tests {
                     name: "plain name".to_owned(),
                     workdir: "/home/test/".to_owned(),
                     excludes: Some(vec!["dir1".to_owned()]),
+                    show_hidden: None,
                     preview_cmd: None,
                 },
             ];
@@ -262,8 +272,48 @@ mod tests {
                     workdir: "/home/test/".to_owned().try_into().unwrap(),
                     preview_cmd: None,
                     excludes: Some(vec!["dir1".to_owned()]),
+                    show_hidden: false,
                 })
             );
+        }
+
+        #[test_case(false, None, false ; "global disabled, entry unset")]
+        #[test_case(true, None, true ; "global enabled, entry unset")]
+        #[test_case(false, Some(true), true ; "entry enables over global")]
+        #[test_case(true, Some(false), false ; "entry disables over global")]
+        fn show_hidden(global: bool, entry: Option<bool>, expected: bool) {
+            let (args, mut file) = setup();
+            file.show_hidden = global;
+            file.entries = vec![FileEntry {
+                kind: FileEntryKind::Dir,
+                name: "dir".to_owned(),
+                workdir: "/home/test/".to_owned(),
+                excludes: None,
+                show_hidden: entry,
+                preview_cmd: None,
+            }];
+
+            let result = Config::construct(args, file).unwrap();
+
+            let Entry::Dir(dir) = &result.1[0] else {
+                panic!("expected a Dir entry");
+            };
+            assert_eq!(dir.show_hidden, expected);
+        }
+
+        #[test]
+        fn show_hidden_on_plain_entry_is_error() {
+            let (args, mut file) = setup();
+            file.entries = vec![FileEntry {
+                kind: FileEntryKind::Plain,
+                name: "plain".to_owned(),
+                workdir: "/home/test/".to_owned(),
+                excludes: None,
+                show_hidden: Some(true),
+                preview_cmd: None,
+            }];
+
+            assert!(Config::construct(args, file).is_err());
         }
 
         #[test]

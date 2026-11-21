@@ -35,6 +35,7 @@ Configuration is done via file located at `$XDG_CONFIG_HOME/tmux/sessionizer.tom
 no_banner = true
 verbose = false
 sort = true
+show_hidden = false # Show hidden directories (starting with a dot) in Dir entries. Can be overridden per entry.
 preview_width = 30
 # Default dir is used when switching to session directly via "tms switch" or when session is not found in the entries.
 default_dir = "/"
@@ -59,6 +60,7 @@ kind = "Dir" # Dir entries show all first level subdirectories as plain entries.
 name = "My Projects Dir - {{name}} {{workdir}}" # For dir entries, the name is a template which can also use {{name}} and {{workdir}}.
 workdir = "/home/youruser"
 excludes = ["somedir"] # You can also define directories to exclude.
+show_hidden = true # Optional, overrides the top-level show_hidden for this entry.
 
 ```
 

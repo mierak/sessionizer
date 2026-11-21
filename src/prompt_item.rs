@@ -66,7 +66,9 @@ impl EntryDir {
                     .context("Unable to convert path {:?} to str.")?
                     .to_owned();
 
-                if self.excludes.as_ref().map_or(false, |v| v.iter().any(|el| *el == name)) {
+                let is_hidden = name.starts_with('.');
+                let is_excluded = self.excludes.as_ref().map_or(false, |v| v.iter().any(|el| *el == name));
+                if (is_hidden && !self.show_hidden) || is_excluded {
                     return Ok(());
                 }
 
@@ -202,5 +204,40 @@ impl IntoPromptItems for Vec<Entry> {
         }
 
         return Ok(res);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use test_case::test_case;
+
+    use crate::config::EntryDir;
+    use crate::tmux::Sessions;
+
+    #[test_case(false, &["visible"] ; "hidden dirs skipped")]
+    #[test_case(true, &[".hidden", "visible"] ; "hidden dirs shown")]
+    fn dir_entry_filters_dirs(show_hidden: bool, expected: &[&str]) {
+        // Each case gets its own dir because test cases run in parallel.
+        let root = std::env::temp_dir().join(format!("sessionizer-test-{}-{show_hidden}", std::process::id()));
+        for dir in ["visible", ".hidden", "excluded"] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+        }
+
+        let entry = EntryDir {
+            name: "{{name}}".to_owned(),
+            workdir: root.to_str().unwrap().to_owned().try_into().unwrap(),
+            excludes: Some(vec!["excluded".to_owned()]),
+            show_hidden,
+            preview_cmd: None,
+        };
+
+        let mut names = Vec::new();
+        let result = entry.into_prompt_items(&Sessions::default(), |item| names.push(item.name));
+        fs::remove_dir_all(&root).unwrap();
+
+        result.unwrap();
+        names.sort(); // read_dir order is not guaranteed
+        assert_eq!(names, expected);
     }
 }
