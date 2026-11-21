@@ -1,10 +1,5 @@
-use std::sync::Arc;
-
-use anyhow::{Context, Result};
-use skim::{
-    prelude::{unbounded, SkimOptionsBuilder},
-    Skim, SkimItemReceiver, SkimItemSender, SkimOptions,
-};
+use anyhow::{anyhow, Context, Result};
+use skim::{prelude::SkimOptionsBuilder, Skim, SkimOptions};
 
 use crate::{config::Config, prompt_item::PromptItem};
 
@@ -21,28 +16,19 @@ static HEADER: &str = concat!(
 );
 
 pub fn show(entries: Vec<PromptItem>, config: &Config) -> Result<Option<PromptItem>> {
-    let (tx_item, rx_item): (SkimItemSender, SkimItemReceiver) = unbounded();
-    for ele in entries {
-        tx_item.send(Arc::new(ele))?;
-    }
-    drop(tx_item);
-
     let mut skim_opts = SkimOptionsBuilder::default();
 
-    let preview = &format!("right:{}%", &config.preview_width);
+    let preview = format!("right:{}%", config.preview_width);
 
-    skim_opts.cmd_query(Some(""));
-    skim_opts.preview(Some(""));
-    skim_opts.preview_window(Some(preview));
-    skim_opts.height(Some("100%"));
-    skim_opts.multi(false);
+    skim_opts.preview("");
+    skim_opts.preview_window(preview.as_str());
     skim_opts.reverse(true);
     // skim_opts.bind(vec!["ctrl-x:execute(tmux kill-session -t {})", "ctrl-x:refresh-cmd"]);
 
     let header = gen_header(&config.hide_banner)?;
-    skim_opts.header(Some(&header));
+    skim_opts.header(header);
 
-    return prompt_for_session(rx_item, skim_opts.build().context("Unable to build skim opts")?);
+    return prompt_for_session(entries, skim_opts.build().context("Unable to build skim opts")?);
 }
 
 fn gen_header(hide_banner: &bool) -> Result<String> {
@@ -59,23 +45,21 @@ fn gen_header(hide_banner: &bool) -> Result<String> {
     return Ok(header);
 }
 
-fn prompt_for_session(rx_item: SkimItemReceiver, opts: SkimOptions) -> Result<Option<PromptItem>> {
-    let selected_items = Skim::run_with(&opts, Some(rx_item))
-        .filter(|out| !out.is_abort)
-        .map(|out| out.selected_items)
-        .unwrap_or_default();
+fn prompt_for_session(entries: Vec<PromptItem>, opts: SkimOptions) -> Result<Option<PromptItem>> {
+    // skim reports errors as eyre::Report, which does not convert into anyhow::Error directly.
+    let output = Skim::run_items(opts, entries).map_err(|err| anyhow!("Unable to run skim: {err}"))?;
+    if output.is_abort {
+        return Ok(None);
+    }
 
-    let selected_items = selected_items
-        .into_iter()
-        .map(|selected_item| -> Result<PromptItem> {
-            let item = (*selected_item)
-                .as_any()
-                .downcast_ref::<PromptItem>()
-                .context("Unable to downcast selected item to ConfigEntry")?;
-
-            return Ok(item.to_owned());
+    return output
+        .selected_items
+        .last()
+        .map(|selected_item| {
+            selected_item
+                .downcast_item::<PromptItem>()
+                .cloned()
+                .context("Unable to downcast selected item to PromptItem")
         })
-        .collect::<Result<Vec<PromptItem>>>();
-
-    return Ok(selected_items?.pop());
+        .transpose();
 }
