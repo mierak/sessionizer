@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::cmp::Ordering;
+use std::cmp::Reverse;
 use std::fs;
 
 use anyhow::Context;
@@ -110,6 +110,14 @@ impl PromptItem {
         };
     }
 
+    pub fn is_running(&self) -> bool {
+        self.stats.is_some()
+    }
+
+    pub fn is_current(&self) -> bool {
+        self.stats.as_ref().is_some_and(|stats| stats.current)
+    }
+
     fn populate_session_data(&mut self, sessions: &Sessions) {
         if let Some(s) = sessions.value_ref().get(&self.name) {
             self.stats = Some(s.to_owned());
@@ -180,45 +188,109 @@ impl IntoPromptItems for Vec<Entry> {
             sessions.value_ref_mut().remove(&ele.name);
         }
 
-        if !sessions.value_ref().is_empty() {
-            for (k, v) in sessions.value().into_iter() {
-                v.into_prompt_items(k.to_owned(), config.default_dir.to_owned(), |item| res.push(item))?;
-            }
+        let mut sessions_not_in_config: Vec<_> = sessions.value().into_iter().collect();
+        sessions_not_in_config.sort_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b));
+        for (name, stats) in sessions_not_in_config {
+            stats.into_prompt_items(name, config.default_dir.to_owned(), |item| res.push(item))?;
         }
 
-        if config.sort {
-            #[rustfmt::skip]
-            res.sort_by(|a, b| {
-                match (a, b) {
-                    (PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }, _) => Ordering::Less,
-                    (_, PromptItem { stats: Some(SessionStats { attached: true, ..}), .. }) => Ordering::Greater,
-                    (PromptItem { stats: Some(_), .. }, PromptItem { stats: None, .. }) => Ordering::Less,
-                    (PromptItem { stats: None, .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
-                    (PromptItem { stats: Some(SessionStats { window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats { window_count: c2, .. }), .. }) if (c1 == c2) => Ordering::Equal,
-                    (PromptItem { stats: Some(SessionStats { window_count: c1, .. }), .. }, PromptItem { stats: Some(SessionStats { window_count: c2, .. }), .. }) if (c1 > c2) => Ordering::Less,
-                    (PromptItem { stats: Some(_), .. }, PromptItem { stats: Some(_), .. }) => Ordering::Greater,
-                    (PromptItem { name: name1, .. }, PromptItem { name: name2, .. }) => name1.to_lowercase().cmp(&name2.to_lowercase()),
-
-                }
-            });
-        }
+        order_items(&mut res, config.sort);
 
         return Ok(res);
     }
 }
 
+fn order_items(items: &mut [PromptItem], sort: bool) {
+    if sort {
+        items.sort_by_cached_key(|item| {
+            let stats = item.stats.as_ref();
+            (
+                Reverse(stats.is_some_and(|stats| stats.attached)),
+                Reverse(stats.map(|stats| stats.window_count)),
+                item.name.to_lowercase(),
+                item.name.clone(),
+            )
+        });
+    }
+
+    items.sort_by_key(|item| (item.is_current(), !item.is_running()));
+}
+
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use std::fs;
     use test_case::test_case;
 
+    use super::{order_items, PromptItem};
     use crate::config::EntryDir;
-    use crate::tmux::Sessions;
+    use crate::tmux::{SessionStats, Sessions};
+
+    fn not_running(name: &str) -> PromptItem {
+        PromptItem::new(name.to_owned(), "/".to_owned().try_into().unwrap())
+    }
+
+    fn running(name: &str, window_count: u8, attached: bool, current: bool) -> PromptItem {
+        let mut item = not_running(name);
+        item.stats = Some(SessionStats {
+            id: format!("${name}"),
+            window_count,
+            attached,
+            current,
+        });
+        item
+    }
+
+    fn names(items: &[PromptItem]) -> Vec<&str> {
+        items.iter().map(|item| item.name.as_str()).collect()
+    }
+
+    #[test]
+    fn sort_puts_attached_then_most_windows_then_name_and_current_last() {
+        let mut items = vec![
+            not_running("b"),
+            running("few windows", 1, false, false),
+            running("other terminal 2", 1, true, false),
+            not_running("A"),
+            running("many windows", 5, false, false),
+            running("other terminal 1", 1, true, false),
+            running("here", 1, true, true),
+        ];
+
+        order_items(&mut items, true);
+
+        assert_eq!(
+            names(&items),
+            [
+                "other terminal 1",
+                "other terminal 2",
+                "many windows",
+                "few windows",
+                "A",
+                "b",
+                "here"
+            ]
+        );
+    }
+
+    #[test]
+    fn without_sorting_running_sessions_come_first_and_current_last() {
+        let mut items = vec![
+            running("here", 1, true, true),
+            not_running("x"),
+            running("y", 3, false, false),
+            not_running("w"),
+            running("z", 1, false, false),
+        ];
+
+        order_items(&mut items, false);
+
+        assert_eq!(names(&items), ["y", "z", "x", "w", "here"]);
+    }
 
     #[test_case(false, &["visible"] ; "hidden dirs skipped")]
     #[test_case(true, &[".hidden", "visible"] ; "hidden dirs shown")]
     fn dir_entry_filters_dirs(show_hidden: bool, expected: &[&str]) {
-        // Each case gets its own dir because test cases run in parallel.
         let root = std::env::temp_dir().join(format!("sessionizer-test-{}-{show_hidden}", std::process::id()));
         for dir in ["visible", ".hidden", "excluded"] {
             fs::create_dir_all(root.join(dir)).unwrap();
@@ -237,7 +309,7 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
 
         result.unwrap();
-        names.sort(); // read_dir order is not guaranteed
+        names.sort();
         assert_eq!(names, expected);
     }
 }

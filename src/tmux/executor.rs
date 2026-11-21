@@ -38,14 +38,3 @@ pub struct Output {
     pub stderr: Vec<u8>,
     pub status: ExitStatus,
 }
-
-impl Output {
-    pub fn print(&self) {
-        if !self.stdout.is_empty() {
-            println!("self.stdout = {}", String::from_utf8_lossy(&self.stdout));
-        }
-        if !self.stderr.is_empty() {
-            println!("self.stderr = {}", String::from_utf8_lossy(&self.stderr));
-        }
-    }
-}

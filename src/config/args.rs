@@ -22,7 +22,7 @@ pub(crate) struct Args {
         short,
         long,
         default_value_t = false,
-        help = "Create the session if needed but do not switch to it. Print the session name to stdout. Useful for scripting. ie. 'tmux switch-client -t $(tms -e)'"
+        help = "Create the session if needed but do not switch to it. Print the session id to stdout. Useful for scripting. ie. 'tmux switch-client -t $(tms -e)'"
     )]
     pub eval_mode: bool,
 

@@ -215,7 +215,7 @@ impl Config {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     mod construct {
         use std::{path::PathBuf, str::FromStr, sync::Arc};

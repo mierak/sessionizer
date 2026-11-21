@@ -13,13 +13,14 @@ use anyhow::Result;
 use config::Command;
 use config::Config;
 use prompt_item::PromptItem;
+use tmux::is_inside_tmux;
 use tmux::Execute;
 use tmux::Tmux;
 
 pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &Config) -> Result<()> {
     match config.command {
         Some(Command::List { grouped }) => {
-            if let Some(selected_item) = prompt::show(prompt_items, config)? {
+            if let Some(selected_item) = prompt::show_with_current_pinned(prompt_items, config)? {
                 if config.dry_run {
                     return Ok(());
                 }
@@ -28,7 +29,7 @@ pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &C
             Ok(())
         }
         None => {
-            if let Some(selected_item) = prompt::show(prompt_items, config)? {
+            if let Some(selected_item) = prompt::show_with_current_pinned(prompt_items, config)? {
                 if config.dry_run {
                     return Ok(());
                 }
@@ -65,9 +66,9 @@ pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &C
             }
             let current_session = prompt_items
                 .iter()
-                .find(|i| i.stats.as_ref().map_or(false, |s| s.attached))
-                .context("Cannot kill current session because no session is attached.")?;
-            tmux.kill_session(&current_session.name)?;
+                .find_map(|item| item.stats.as_ref().filter(|stats| stats.current))
+                .context("Cannot kill current session because tms is not running inside tmux.")?;
+            tmux.kill_session(&current_session.id)?;
             Ok(())
         }
         Some(Command::Kill {
@@ -77,16 +78,23 @@ pub fn run<E: Execute>(prompt_items: Vec<PromptItem>, tmux: &Tmux<E>, config: &C
                 return Ok(());
             }
 
-            tmux.kill_session(name)?;
-            Ok(())
+            kill_session_by_name(tmux, name)
         }
         Some(Command::Kill { .. }) => {
-            if let Some(selected_item) = prompt::show(prompt_items, config)? {
-                tmux.kill_session(&selected_item.name)?;
+            let running_sessions = prompt_items.into_iter().filter(PromptItem::is_running).collect();
+            if let Some(selected_item) = prompt::show(running_sessions, config)? {
+                kill_session_by_name(tmux, &selected_item.name)?;
             }
             Ok(())
         }
     }
+}
+
+fn kill_session_by_name<E: Execute>(tmux: &Tmux<E>, session_name: &str) -> Result<()> {
+    let session_id = tmux
+        .find_session_id(session_name)?
+        .with_context(|| format!("Session '{session_name}' is not running."))?;
+    tmux.kill_session(&session_id)
 }
 
 fn switch_to_selected_item<E: Execute>(
@@ -95,30 +103,33 @@ fn switch_to_selected_item<E: Execute>(
     config: &Config,
     grouped: bool,
 ) -> Result<()> {
-    let inside_tmux = std::env::var("TMUX").is_ok();
+    let inside_tmux = is_inside_tmux();
 
     if config.verbose {
         println!("Selected_item: {item:?}");
         println!("inside_tmux: {inside_tmux:?}");
     };
 
-    if !tmux.has_session(&item.name)? {
-        tmux.new_session(&item.name, item.workdir.as_ref())?.print();
-    }
+    let session_id = match tmux.find_session_id(&item.name)? {
+        Some(session_id) => session_id,
+        None => tmux.new_session(&item.name, item.workdir.as_ref())?,
+    };
 
     if config.eval_mode {
-        println!("{}", item.name);
+        println!("{session_id}");
         return Ok(());
     }
 
-    if grouped {
-        tmux.new_grouped_session(&item.name)?.print();
-    }
+    let target_session_id = if grouped {
+        tmux.new_grouped_session(&session_id)?
+    } else {
+        session_id
+    };
 
     if inside_tmux {
-        tmux.switch_client(&item.name)?.print();
+        tmux.switch_client(&target_session_id)?;
         return Ok(());
     }
 
-    return tmux.attach(&item.name);
+    return tmux.attach(&target_session_id);
 }
