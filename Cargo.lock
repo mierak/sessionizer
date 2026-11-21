@@ -2065,6 +2065,7 @@ dependencies = [
  "serde",
  "skim",
  "test-case",
+ "tokio",
  "toml",
 ]
 

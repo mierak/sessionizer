@@ -1,6 +1,7 @@
 #![allow(clippy::needless_return)]
 #![deny(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 pub mod config;
+mod matching;
 pub mod prompt;
 pub mod prompt_item;
 pub mod tmux;

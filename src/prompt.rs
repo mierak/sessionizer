@@ -1,7 +1,9 @@
-use anyhow::{anyhow, Context, Result};
-use skim::{prelude::SkimOptionsBuilder, Skim, SkimItem, SkimOptions};
+use std::fmt::Display;
 
-use crate::{config::Config, prompt_item::PromptItem};
+use anyhow::{anyhow, Context, Result};
+use skim::{prelude::SkimOptionsBuilder, Skim, SkimItem, SkimOptions, SkimOutput};
+
+use crate::{config::Config, matching::running_sessions_first_matcher, prompt_item::PromptItem};
 
 #[rustfmt::skip]
 static HEADER: &str = concat!(
@@ -59,7 +61,7 @@ fn gen_header(hide_banner: &bool, pinned: Option<&PromptItem>) -> Result<String>
 }
 
 fn prompt_for_session(entries: Vec<PromptItem>, opts: SkimOptions) -> Result<Option<PromptItem>> {
-    let output = Skim::run_items(opts, entries).map_err(|err| anyhow!("Unable to run skim: {err}"))?;
+    let output = run_skim(entries, opts)?;
     if output.is_abort {
         return Ok(None);
     }
@@ -74,6 +76,22 @@ fn prompt_for_session(entries: Vec<PromptItem>, opts: SkimOptions) -> Result<Opt
                 .context("Unable to downcast selected item to PromptItem")
         })
         .transpose();
+}
+
+fn run_skim(entries: Vec<PromptItem>, opts: SkimOptions) -> Result<SkimOutput> {
+    let matcher = running_sessions_first_matcher(&opts);
+    let mut skim = Skim::new_items(opts, entries).map_err(skim_error)?;
+    skim.app_mut().matcher = matcher;
+
+    tokio::runtime::Runtime::new()?.block_on(async move {
+        skim.enter().await.map_err(skim_error)?;
+        skim.run().await.map_err(skim_error)?;
+        Ok::<_, anyhow::Error>(skim.output())
+    })
+}
+
+fn skim_error(error: impl Display) -> anyhow::Error {
+    anyhow!("Unable to run skim: {error}")
 }
 
 #[cfg(test)]
